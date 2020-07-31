@@ -1,28 +1,28 @@
-Package: BuildABiocWorkshop2020
-Title: Bioconductor Workshop Template and Github Actions
+Package: BIRSBIO2020.scProteomics.predictPartialOverlappingData
+Title: Predicting the missing samples or features in partially overlapping data
 Version: 0.1.1
 Authors@R: 
-    person(given = "Sean",
-           family = "Davis",
+    person(given = "Chen",
+           family = "Meng",
            role = c("aut", "cre"),
-           email = "seandavi@gmail.com",
-           comment = c(ORCID = "your-orc-id-here"))
-Description: This package serves as a template for using github actions to 
-    prepare a Bioconductor Workshop package for use. In particular,
-    a pkgdown website and docker image are generated based on workflow 
-    settings. 
+           email = "mengchen18@gmail.com")
+Description: Partially overlapping data are often faced in the multi-omics data. For example, a cohort has been profiling using multiple omics technologies, however, every technology may only profile a subset of the cohort. We call this scenario as data with partial overlapping samples. In the data analysis, We may want to predict the missing samples in one omics dataset using the information from other omics datasets, where the samples are measured. Similarly, we may also interested in the data with partial overlapping features, e.g. genes or proteins, where all the samples are measured in all datasets, but the measured features may vary. In this vignette, we first briefly describe two methods that can be used to solve these problems, i.e. simple least square regression and multi-block principal component analysis (MBPCA). Next, we applied the two methods to solve the "missing sample" problem (using NCI60 transcriptomics data as an example) and missing feature problem (using mass-tag single-cell proteomics data). Finally, we will discuss the pros and cons of the methods and factors that may influence the prediction performance. 
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.0
 Depends: 
-    Biobase
+    Biobase,
+    omicade4,
+    mogsa,
+    SummarizedExperiment,
+    stringr
 Suggests: 
     knitr,
     rmarkdown,
     pkgdown
-URL: https://seandavi.github.io/BuildABiocWorkshop2020/
-BugReports: https://github.com/seandavi/BuildABiocWorkshop2020/issues/new/choose
+URL: https://mengchen18.github.io/BIRSBIO2020.scProteomics.predictPartialOverlappingData/
+BugReports: https://github.com/mengchen18/BIRSBIO2020.scProteomics.predictPartialOverlappingData/issues/new
 VignetteBuilder: knitr
-DockerImage: seandavi/buildabiocworkshop2020:latest
+DockerImage: predict_partial_overlapping_data:latest
