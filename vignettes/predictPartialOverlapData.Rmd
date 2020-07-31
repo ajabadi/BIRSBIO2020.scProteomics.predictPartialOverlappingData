@@ -148,8 +148,7 @@ Among them, let's assume that the HGU95 platform has a few cell lines missed now
 
 ```{r LoadingData, echo = TRUE, results = 'hide'}
 library(mogsa)
-library(omicade4)
-data("NCI60_4arrays")
+load("../Data/NCI60_4arrays.rda")
 ```
 
 Indeed, in the `NCI60_4arrays` data, all four datasets have measured all 60 cell lines. But we can randomly partition our data to the training data (the samples measured in all datasets) and testing data (the samples not measured in HGU95 and will be predicted). To validate our prediction, we can correlate the predicted value with the measured values. First, let's use 40 cell lines in training and 20 for testing.
