@@ -15,9 +15,7 @@ RoxygenNote: 7.1.0
 Depends: 
     Biobase,
     omicade4,
-    mogsa,
-    SummarizedExperiment,
-    stringr
+    mogsa
 Suggests: 
     knitr,
     rmarkdown,

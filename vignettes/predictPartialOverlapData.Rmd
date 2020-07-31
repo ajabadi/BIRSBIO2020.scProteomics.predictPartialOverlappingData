@@ -203,41 +203,12 @@ We now assume that some of the proteins in the purple patients are not measured,
 
 ```{r feature_package, echo = TRUE, results = 'hide', message=FALSE,  warning=FALSE}
 library(mogsa)
-library(stringr)
-library(SummarizedExperiment)
-```
-
-Download the data used in this analysis using the link below and put the data in the right place. I put it the "~/GitHub/data/" folder. 
-
-https://drive.google.com/open?id=1Qb6VgVkWfy2x5Dr7kzqMAfzOLas1G6v-
-
-and more information about the dataset: 
-
-https://github.com/BIRSBiointegration/Hackathon/tree/master/sc-targeted-proteomics
-
-Preparing data for the analysis
-```{r feature_dataprep, echo = TRUE, results = 'hide', message=FALSE}
-load("~/GitHub/data/masstagSCE.rda")
-
-dat <- livecells.sce
-meta <- as.data.frame(colData(dat), stringsAsFactors = FALSE)
-# select the TN tumors
-i <- which(meta$Clinical.Subtype == "TN")
-features <- as.data.frame(rowData(dat))
-expr <- assay(dat)
-rownames(expr) <- make.names(rownames(expr))
-# rescale the data
-pt <- as.character(unique(meta$patient_id.x[i]))
-exprlist <- lapply(pt, function(v) {
-  scale(t(expr[, meta$patient_id.x == v]), center = TRUE, scale = TRUE)
-})
-names(exprlist) <- pt
-sapply(exprlist, nrow)
 ```
 
 Predicting the missing proteins using MBPCA
 ```{r feature_mbpca}
 ######
+load("../Data/TN_sce.RDA")
 s.train <- sample(1:ncol(exprlist[[1]]), size = 25)
 s.test <- setdiff(1:ncol(exprlist[[1]]), s.train)
 v <- pred_mbpca(
@@ -247,8 +218,15 @@ v <- pred_mbpca(
 meanz <- lapply(v, function(x) x$cor.test[, "meanZ"])
 boxplot(meanz)
 ```
+The `exprlist` data is reduced from the mass tag data used in the hackathon. The data could be downloaded 
 
-Predicting the missing proteins using simple linear regression
+https://drive.google.com/open?id=1Qb6VgVkWfy2x5Dr7kzqMAfzOLas1G6v-
+
+and more information about the dataset: 
+
+https://github.com/BIRSBiointegration/Hackathon/tree/master/sc-targeted-proteomics
+
+Next, we predict the missing proteins using simple linear regression
 ```{r feature_lm}
 v2 <- pred_lm( x = exprlist, train.var = s.train, test.var = s.test, validation = "column" )
 meanz2 <- lapply(v2, function(x) x$cor.test[, "meanZ"])
