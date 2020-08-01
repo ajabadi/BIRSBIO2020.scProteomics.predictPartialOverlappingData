@@ -1,9 +1,3 @@
----
-title: "Predicting the missing samples or features in partially overlapping data"
-author: Chen Meng
-date: 21.07.2020
----
-
 # Predicting the missing samples or features in partially overlapping data
 
 ## Introduction
