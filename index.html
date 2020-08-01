@@ -84,59 +84,305 @@
 
       </header><div class="row">
   <div class="contents col-md-9">
-<div id="buildabiocworkshop2020" class="section level1">
+
+<hr>
+<p>title: “Predicting the missing samples or features in partially overlapping data” author: Chen Meng date: 21.07.2020 —</p>
+<div id="predicting-the-missing-samples-or-features-in-partially-overlapping-data" class="section level1">
 <div class="page-header"><h1 class="hasAnchor">
-<a href="#buildabiocworkshop2020" class="anchor"></a>BuildABiocWorkshop2020</h1></div>
-<p>This package is a template for building a Bioconductor 2020 workshop. The package includes Github actions to:</p>
-<ol>
-<li>Set up bioconductor/bioconductor_docker:devel on Github resources</li>
-<li>Install package dependencies for your package (based on the <code>DESCRIPTION</code> file)</li>
-<li>Run <code><a href="https://rdrr.io/pkg/rcmdcheck/man/rcmdcheck.html">rcmdcheck::rcmdcheck</a></code>
-</li>
-<li>Build a pkgdown website and push it to github pages</li>
-<li>Build a docker image with the installed package and dependencies</li>
-</ol>
-<div id="responsibilities" class="section level2">
+<a href="#predicting-the-missing-samples-or-features-in-partially-overlapping-data" class="anchor"></a>Predicting the missing samples or features in partially overlapping data</h1></div>
+<div id="introduction" class="section level2">
 <h2 class="hasAnchor">
-<a href="#responsibilities" class="anchor"></a>Responsibilities</h2>
-<p>This year, package authors will be primarily responsible for:</p>
-<ol>
-<li>Creating a landing site of their choosing for their workshops (a website). This website should be listed in the <code>DESCRIPTION</code> file as the <code>URL</code>.</li>
-<li>Creating a docker account and image that will contain workshop materials and the installed packages necessary to run those materials. The name of the resulting docker image, including “tag” if desired, should be listed in a non-standard tag, <code>DockerImage:</code> in the <code>DESCRIPTION</code> file.</li>
-</ol>
-<p>Both of those tasks can be accomplished using the Github actions included in this template package. The vignette accompanying this package describes how to accomplish both of these tasks.</p>
+<a href="#introduction" class="anchor"></a>Introduction</h2>
+<p>Partially overlapping data are often faced in the multi-omics data. For example, a cohort has been profiling using multiple omics technologies, however, every technology may only profile a subset of the cohort. We call this scenario as data with partial overlapping samples. In the data analysis, We may want to predict the missing samples in one omics dataset using the information from other omics datasets, where the samples are measured. Similarly, we may also interested in the data with partial overlapping features, e.g. genes or proteins, where all the samples are measured in all datasets, but the measured features may vary. In this vignette, we first briefly describe two methods that can be used to solve these problems, i.e. simple least square regression and multi-block principal component analysis (MBPCA). Next, we applied the two methods to solve the “missing sample” problem (using NCI60 transcriptomics data as an example) and missing feature problem (using mass-tag single-cell proteomics data). Finally, we will discuss the pros and cons of the methods and factors that may influence the prediction performance.</p>
 </div>
-<div id="details" class="section level2">
+<div id="the-methods-to-solve-the-problem" class="section level2">
 <h2 class="hasAnchor">
-<a href="#details" class="anchor"></a>Details</h2>
-<p>For detailed instructions, see the <code>How to build a workshop</code> article/vignette.</p>
+<a href="#the-methods-to-solve-the-problem" class="anchor"></a>The methods to solve the problem.</h2>
+<p>The most straightforward method to predict the missing feature or samples is simple linear regression. In this method, we train a linear model using the dataset where the samples/features to be predicted are measured. Then apply the model to predict the feature and sample. We implement this method in the <code>pred_lm</code> function as below:</p>
+<div class="sourceCode" id="cb1"><pre class="r"><span class="no">pred_lm</span> <span class="kw">&lt;-</span> <span class="kw">function</span>(<span class="no">x</span>, <span class="no">train.var</span>, <span class="no">test.var</span>, <span class="no">validation</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span>(<span class="st">"row"</span>, <span class="st">"column"</span>)[<span class="fl">1</span>]) {
+  <span class="no">xs</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">x</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html">as.data.frame</a></span>(<span class="no">x</span>[, <span class="no">train.var</span>]))
+  <span class="no">prd</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">xs</span>), <span class="kw">function</span>(<span class="no">m</span>) {
+
+    <span class="co"># predicting matrix - m</span>
+    <span class="no">prdmat</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">xs</span>), <span class="no">m</span>)
+
+    <span class="no">rmat</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">prdmat</span>, <span class="kw">function</span>(<span class="no">mm</span>) {
+      <span class="co"># using matrix mm to predict</span>
+      <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="no">test.var</span>, <span class="kw">function</span>(<span class="no">tv</span>) {
+        <span class="no">df</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html">data.frame</a></span>(<span class="kw">y</span> <span class="kw">=</span> <span class="no">x</span><span class="kw">[[</span><span class="no">mm</span>]][, <span class="no">tv</span>], <span class="no">xs</span><span class="kw">[[</span><span class="no">mm</span>]])
+        <span class="no">mod</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html">lm</a></span>(<span class="no">y</span> ~ <span class="no">.</span>, <span class="kw">data</span> <span class="kw">=</span> <span class="no">df</span>)
+        <span class="fu"><a href="https://rdrr.io/r/stats/predict.html">predict</a></span>(<span class="no">mod</span>, <span class="no">xs</span><span class="kw">[[</span><span class="no">m</span>]])
+      })
+      })
+    <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">rmat</span>) <span class="kw">&lt;-</span> <span class="no">prdmat</span>
+    <span class="no">rmat</span>$<span class="no">mean</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/funprog.html">Reduce</a></span>(<span class="st">"+"</span>, <span class="no">rmat</span>)/<span class="fu"><a href="https://rdrr.io/r/base/length.html">length</a></span>(<span class="no">rmat</span>)
+    <span class="no">rmatz</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">rmat</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/scale.html">scale</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="no">x</span>))))
+    <span class="no">rmat</span>$<span class="no">meanZ</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/funprog.html">Reduce</a></span>(<span class="st">"+"</span>, <span class="no">rmatz</span>)/<span class="fu"><a href="https://rdrr.io/r/base/length.html">length</a></span>(<span class="no">rmat</span>)
+
+    <span class="co">## correlation of predicted variable (test set)</span>
+    <span class="no">pred.cor.test</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="no">rmat</span>, <span class="kw">function</span>(<span class="no">mm</span>) {
+      <span class="kw">if</span> (<span class="no">validation</span> <span class="kw">==</span> <span class="st">"row"</span>) {
+        <span class="no">r</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/nrow.html">nrow</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]]), <span class="kw">function</span>(<span class="no">i</span>) {
+          <span class="fu"><a href="https://rdrr.io/r/stats/cor.html">cor</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/unlist.html">unlist</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]][<span class="no">i</span>, <span class="no">test.var</span>]), <span class="no">mm</span>[<span class="no">i</span>, ])
+        })
+      } <span class="kw">else</span> {
+        <span class="no">r</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/nrow.html">ncol</a></span>(<span class="no">mm</span>), <span class="kw">function</span>(<span class="no">i</span>) {
+          <span class="fu"><a href="https://rdrr.io/r/stats/cor.html">cor</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/unlist.html">unlist</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]][, <span class="no">test.var</span>[<span class="no">i</span>]]), <span class="no">mm</span>[, <span class="no">i</span>])
+        })
+      }
+      <span class="no">r</span>
+    })
+    <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span>(<span class="kw">predicted</span> <span class="kw">=</span> <span class="no">rmat</span>, <span class="kw">cor.test</span> <span class="kw">=</span> <span class="no">pred.cor.test</span>)
+  })
+  <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">prd</span>) <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">xs</span>)
+  <span class="no">prd</span>
+}</pre></div>
+<p>In this function, <code>x</code> a list of matrix/data.frame, <code>train.var</code> defines the training variables and <code>test.var</code> defines variable to be predicted. <code>validation</code> are whether on rows or on columns. The example of applying the function will come in the next section.</p>
+<p>The second method that can solve the problem is multi-block principal component analysis (MBPCA). In regular PCA, we can project extra samples on the sample space of PCA [1]. When we have multiple omics data, the MBPCA can be used to find the coherent structure between datasets [2], and the missing samples in one of the datasets could be projects like regular PCA. This method is implemented in the <code>pred_mbpca</code> function.</p>
+<div class="sourceCode" id="cb2"><pre class="r"><span class="no">pred_mbpca</span> <span class="kw">&lt;-</span> <span class="kw">function</span>(<span class="no">x</span>, <span class="no">train.var</span>, <span class="no">test.var</span>, <span class="no">ncomp</span> <span class="kw">=</span> <span class="fl">2</span>, <span class="no">method</span> <span class="kw">=</span> <span class="st">"globalScore"</span>,
+                       <span class="no">validation</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span>(<span class="st">"row"</span>, <span class="st">"column"</span>)[<span class="fl">1</span>], <span class="no">...</span>) {
+
+  <span class="no">x</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">x</span>, <span class="no">as.matrix</span>)
+  <span class="no">xs</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">x</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>[, <span class="no">train.var</span>])
+  <span class="no">rs</span> <span class="kw">&lt;-</span> <span class="kw pkg">mogsa</span><span class="kw ns">::</span><span class="fu"><a href="https://rdrr.io/pkg/mogsa/man/mbpca.html">mbpca</a></span>(<span class="kw">x</span> <span class="kw">=</span> <span class="no">xs</span>, <span class="kw">ncomp</span> <span class="kw">=</span> <span class="no">ncomp</span>, <span class="kw">method</span> <span class="kw">=</span> <span class="no">method</span>, <span class="no">...</span>)
+  <span class="no">nr</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html">rep</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">x</span>), <span class="kw">times</span> <span class="kw">=</span> <span class="no">rs</span>@<span class="kw">tab.dim</span>[<span class="fl">1</span>, ])
+
+  <span class="no">lmats</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">x</span>), <span class="kw">function</span>(<span class="no">xx</span>) {
+    <span class="no">rs</span>@<span class="kw">loading</span>[<span class="no">nr</span> <span class="kw">==</span> <span class="no">xx</span>, ]
+  })
+  <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">lmats</span>) <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">x</span>)
+
+  <span class="no">prd</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">lmats</span>), <span class="kw">function</span>(<span class="no">m</span>) {
+    <span class="co"># predicting matrix - m</span>
+    <span class="no">prdmat</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">lmats</span>), <span class="no">m</span>)
+    <span class="no">rmat</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">prdmat</span>, <span class="kw">function</span>(<span class="no">mm</span>) {
+      <span class="no">q</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">mm</span>]]) <span class="kw">%*%</span> <span class="no">lmats</span><span class="kw">[[</span><span class="no">mm</span>]]
+      <span class="no">mm</span> <span class="kw">&lt;-</span> <span class="no">q</span> <span class="kw">%*%</span>  <span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="no">lmats</span><span class="kw">[[</span><span class="no">m</span>]])
+      <span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="no">mm</span>)
+    })
+    <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">rmat</span>) <span class="kw">&lt;-</span> <span class="no">prdmat</span>
+    <span class="no">rmat</span>$<span class="no">mean</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/funprog.html">Reduce</a></span>(<span class="st">"+"</span>, <span class="no">rmat</span>)/<span class="fu"><a href="https://rdrr.io/r/base/length.html">length</a></span>(<span class="no">rmat</span>)
+    <span class="no">rmatz</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">rmat</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/scale.html">scale</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="no">x</span>))))
+    <span class="no">rmat</span>$<span class="no">meanZ</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/funprog.html">Reduce</a></span>(<span class="st">"+"</span>, <span class="no">rmatz</span>)/<span class="fu"><a href="https://rdrr.io/r/base/length.html">length</a></span>(<span class="no">rmat</span>)
+
+    <span class="co">## correlation of predicted variable (train set)</span>
+    <span class="no">pred.cor.train</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="no">rmat</span>, <span class="kw">function</span>(<span class="no">mm</span>) {
+      <span class="kw">if</span> (<span class="no">validation</span> <span class="kw">==</span> <span class="st">"row"</span>) {
+        <span class="no">r</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/nrow.html">nrow</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]]), <span class="kw">function</span>(<span class="no">i</span>) {
+          <span class="fu"><a href="https://rdrr.io/r/stats/cor.html">cor</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]][<span class="no">i</span>, <span class="no">train.var</span>], <span class="no">mm</span>[<span class="no">i</span>, <span class="no">train.var</span>])
+        })
+      } <span class="kw">else</span> {
+        <span class="no">r</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/length.html">length</a></span>(<span class="no">train.var</span>), <span class="kw">function</span>(<span class="no">i</span>) {
+          <span class="fu"><a href="https://rdrr.io/r/stats/cor.html">cor</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]][, <span class="no">train.var</span>[<span class="no">i</span>]], <span class="no">mm</span>[, <span class="no">train.var</span>[<span class="no">i</span>]])
+        })
+      }
+      <span class="no">r</span>
+    })
+
+    <span class="co">## correlation of predicted variable (test set)</span>
+    <span class="no">pred.cor.test</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="no">rmat</span>, <span class="kw">function</span>(<span class="no">mm</span>) {
+
+      <span class="kw">if</span> (<span class="no">validation</span> <span class="kw">==</span> <span class="st">"row"</span>) {
+        <span class="no">r</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/nrow.html">nrow</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]]), <span class="kw">function</span>(<span class="no">i</span>) {
+          <span class="fu"><a href="https://rdrr.io/r/stats/cor.html">cor</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]][<span class="no">i</span>, <span class="no">test.var</span>], <span class="no">mm</span>[<span class="no">i</span>, <span class="no">test.var</span>])
+        })
+        <span class="co"># r &lt;- sapply(1:nrow(x[[m]]), function(i) {</span>
+        <span class="co">#   cor(unlist(x[[m]][i, test.var]), mm[i, ])</span>
+        <span class="co"># })</span>
+      } <span class="kw">else</span> {
+        <span class="no">r</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/length.html">length</a></span>(<span class="no">test.var</span>), <span class="kw">function</span>(<span class="no">i</span>) {
+          <span class="fu"><a href="https://rdrr.io/r/stats/cor.html">cor</a></span>(<span class="no">x</span><span class="kw">[[</span><span class="no">m</span>]][, <span class="no">test.var</span>[<span class="no">i</span>]], <span class="no">mm</span>[, <span class="no">test.var</span>[<span class="no">i</span>]])
+        })
+      }
+      <span class="no">r</span>
+    })
+
+    <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span>(<span class="kw">predicted</span> <span class="kw">=</span> <span class="no">rmat</span>, <span class="kw">cor.train</span> <span class="kw">=</span> <span class="no">pred.cor.train</span>, <span class="kw">cor.test</span> <span class="kw">=</span> <span class="no">pred.cor.test</span>)
+  })
+  <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">prd</span>) <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">lmats</span>)
+  <span class="no">prd</span>
+  }</pre></div>
+<p>Again, the application of the function will come later section. A simple description of the parameters: <code>x</code> a list of matrix/data.frame; <code>train.var</code> the training variables; <code>test.var</code> the variables to be predicted; <code>ncomp</code> the number of components to calculate; <code>method</code> the deflation method; <code>validation</code> in the validation step, whether the correlation of rows or columns should be calculated; <code>...</code> other parameters passed to <code>mbpca</code>. The <code>ncomp</code>, <code>method</code> and <code>...</code> method are documented in the function <code>mbpca</code> in <em><code>mogsa</code></em> package.</p>
 </div>
-<div id="results-of-successful-deployment" class="section level2">
+<div id="partially-overlapping-samples" class="section level2">
 <h2 class="hasAnchor">
-<a href="#results-of-successful-deployment" class="anchor"></a>Results of successful deployment</h2>
+<a href="#partially-overlapping-samples" class="anchor"></a>Partially overlapping samples</h2>
+<p>In this application, we have four microarray experiments that measured the gene expression of 60 cell lines (NCI-60). Every microarray datasets contain ~200 genes expression (rows; figure below).</p>
+<p><img src="overlapingSample.png"></p>
+<p>Among them, let’s assume that the HGU95 platform has a few cell lines missed now we want to predict the gene expression in missing samples in the HGU95 platform. First, we need to load the required package and datasets</p>
+<div class="sourceCode" id="cb3"><pre class="r"><span class="fu"><a href="https://rdrr.io/r/base/library.html">library</a></span>(<span class="no">mogsa</span>)
+<span class="fu"><a href="https://rdrr.io/r/base/library.html">library</a></span>(<span class="no">omicade4</span>)</pre></div>
+<pre><code>## Loading required package: ade4</code></pre>
+<pre><code>## Warning: package 'ade4' was built under R version 4.0.2</code></pre>
+<div class="sourceCode" id="cb6"><pre class="r"><span class="fu"><a href="https://rdrr.io/r/utils/data.html">data</a></span>(<span class="st">"NCI60_4arrays"</span>)</pre></div>
+<p>Indeed, in the <code>NCI60_4arrays</code> data, all four datasets have measured all 60 cell lines. But we can randomly partition our data to the training data (the samples measured in all datasets) and testing data (the samples not measured in HGU95 and will be predicted). To validate our prediction, we can correlate the predicted value with the measured values. First, let’s use 40 cell lines in training and 20 for testing.</p>
+<div class="sourceCode" id="cb7"><pre class="r"><span class="fu"><a href="https://rdrr.io/r/base/Random.html">set.seed</a></span>(<span class="fl">18</span>)
+<span class="no">ss</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html">sample</a></span>(<span class="fl">1</span>:<span class="fl">60</span>, <span class="kw">size</span> <span class="kw">=</span> <span class="fl">40</span>)
+<span class="no">v</span> <span class="kw">&lt;-</span> <span class="fu">pred_mbpca</span>(<span class="kw">x</span> <span class="kw">=</span> <span class="no">NCI60_4arrays</span>, <span class="kw">train.var</span> <span class="kw">=</span> <span class="no">ss</span>, <span class="kw">test.var</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fl">1</span>:<span class="fl">60</span>, <span class="no">ss</span>), <span class="kw">ncomp</span> <span class="kw">=</span> <span class="fl">5</span>, <span class="kw">method</span> <span class="kw">=</span> <span class="st">"globalScore"</span>)</pre></div>
+<pre><code>## calculating component 1 ...
+## calculating component 2 ...
+## calculating component 3 ...
+## calculating component 4 ...
+## calculating component 5 ...</code></pre>
+<div class="sourceCode" id="cb9"><pre class="r"><span class="no">v2</span> <span class="kw">&lt;-</span> <span class="fu">pred_lm</span>(<span class="kw">x</span> <span class="kw">=</span> <span class="no">NCI60_4arrays</span>, <span class="kw">train.var</span> <span class="kw">=</span> <span class="no">ss</span>, <span class="kw">test.var</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fl">1</span>:<span class="fl">60</span>, <span class="no">ss</span>))
+
+<span class="co"># geth mean MZ</span>
+<span class="no">t1</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">v</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>$<span class="st">"cor.train"</span>[, <span class="st">"meanZ"</span>])
+<span class="no">t2</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">v</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>$<span class="st">"cor.test"</span>[, <span class="st">"meanZ"</span>])
+<span class="no">l</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/mapply.html">mapply</a></span>(<span class="kw">function</span>(<span class="no">x</span>,<span class="no">y</span>) {
+  <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span>(<span class="kw">MBPCA</span> <span class="kw">=</span> <span class="no">x</span>, <span class="kw">OLS</span> <span class="kw">=</span> <span class="no">y</span>)
+}, <span class="no">t1</span>, <span class="no">t2</span>, <span class="kw">SIMPLIFY</span> <span class="kw">=</span> <span class="fl">FALSE</span>)
+<span class="no">l</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/unlist.html">unlist</a></span>(<span class="no">l</span>, <span class="kw">recursive</span> <span class="kw">=</span> <span class="fl">FALSE</span>)
+<span class="fu"><a href="https://rdrr.io/r/graphics/par.html">par</a></span>(<span class="kw">mar</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span>(<span class="fl">8</span>, <span class="fl">4</span>, <span class="fl">1</span>, <span class="fl">1</span>))
+<span class="fu"><a href="https://rdrr.io/r/graphics/boxplot.html">boxplot</a></span>(<span class="no">l</span>, <span class="kw">las</span> <span class="kw">=</span> <span class="fl">2</span>, <span class="kw">ylab</span> <span class="kw">=</span> <span class="st">"Correlation (predicted vs measured)"</span>)</pre></div>
+<p><img src="vignette_files/figure-html/sample_fig1-1.png"><!-- --></p>
+<div class="sourceCode" id="cb10"><pre class="r">####</pre></div>
+<p>Next, we use 20 samples for training and 40 samples for testing</p>
+<div class="sourceCode" id="cb11"><pre class="r"><span class="no">ss</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html">sample</a></span>(<span class="fl">1</span>:<span class="fl">60</span>, <span class="kw">size</span> <span class="kw">=</span> <span class="fl">20</span>)
+<span class="no">v</span> <span class="kw">&lt;-</span> <span class="fu">pred_mbpca</span>(<span class="kw">x</span> <span class="kw">=</span> <span class="no">NCI60_4arrays</span>, <span class="kw">train.var</span> <span class="kw">=</span> <span class="no">ss</span>, <span class="kw">test.var</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fl">1</span>:<span class="fl">60</span>, <span class="no">ss</span>), <span class="kw">ncomp</span> <span class="kw">=</span> <span class="fl">5</span>, <span class="kw">method</span> <span class="kw">=</span> <span class="st">"globalScore"</span>)</pre></div>
+<pre><code>## calculating component 1 ...
+## calculating component 2 ...
+## calculating component 3 ...
+## calculating component 4 ...
+## calculating component 5 ...</code></pre>
+<div class="sourceCode" id="cb13"><pre class="r"><span class="no">v2</span> <span class="kw">&lt;-</span> <span class="fu">pred_lm</span>(<span class="kw">x</span> <span class="kw">=</span> <span class="no">NCI60_4arrays</span>, <span class="kw">train.var</span> <span class="kw">=</span> <span class="no">ss</span>, <span class="kw">test.var</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fl">1</span>:<span class="fl">60</span>, <span class="no">ss</span>))
+
+
+<span class="no">t1</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">v</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>$<span class="st">"cor.train"</span>[, <span class="st">"meanZ"</span>])
+<span class="no">t2</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">v</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>$<span class="st">"cor.test"</span>[, <span class="st">"meanZ"</span>])
+<span class="no">l</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/mapply.html">mapply</a></span>(<span class="kw">function</span>(<span class="no">x</span>,<span class="no">y</span>) {
+  <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span>(<span class="kw">MBPCA</span> <span class="kw">=</span> <span class="no">x</span>, <span class="kw">OLS</span> <span class="kw">=</span> <span class="no">y</span>)
+}, <span class="no">t1</span>, <span class="no">t2</span>, <span class="kw">SIMPLIFY</span> <span class="kw">=</span> <span class="fl">FALSE</span>)
+<span class="no">l</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/unlist.html">unlist</a></span>(<span class="no">l</span>, <span class="kw">recursive</span> <span class="kw">=</span> <span class="fl">FALSE</span>)
+
+<span class="fu"><a href="https://rdrr.io/r/graphics/par.html">par</a></span>(<span class="kw">mar</span> <span class="kw">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span>(<span class="fl">8</span>, <span class="fl">4</span>, <span class="fl">1</span>, <span class="fl">1</span>))
+<span class="fu"><a href="https://rdrr.io/r/graphics/boxplot.html">boxplot</a></span>(<span class="no">l</span>, <span class="kw">las</span> <span class="kw">=</span> <span class="fl">2</span>, <span class="kw">ylab</span> <span class="kw">=</span> <span class="st">"Correlation (predicted vs measured)"</span>)</pre></div>
+<p><img src="vignette_files/figure-html/sample_fig2-1.png"><!-- --> We can see that</p>
+<ol>
+<li>the MBPCA methods generally perform better than the simple linear regression;</li>
+<li>the performance of linear regression drops more dramatically compared to MBPCA when the size of the training set decreases.</li>
+</ol>
+</div>
+<div id="partially-overlapping-features" class="section level2">
+<h2 class="hasAnchor">
+<a href="#partially-overlapping-features" class="anchor"></a>Partially overlapping features</h2>
+<p>In this application, we work with the <em>mass tag</em> proteomics data provided in the <a href="https://github.com/BIRSBiointegration/Hackathon/tree/master/sc-targeted-proteomics">sc-targeted-proteomics section</a>. The expression of 39 proteins was measured on single-cell resolution among 6 patients with triple-negative tumors (Figure below).</p>
+<p><img src="overlappingFeature.png"></p>
+<p>We now assume that some of the proteins in the purple patients are not measured, we want to know could we reliably predict the expression of the missing proteins in the purple patients. First, we load the package and datasets needed</p>
+<div class="sourceCode" id="cb14"><pre class="r"><span class="fu"><a href="https://rdrr.io/r/base/library.html">library</a></span>(<span class="no">mogsa</span>)
+<span class="fu"><a href="https://rdrr.io/r/base/library.html">library</a></span>(<span class="no">stringr</span>)
+<span class="fu"><a href="https://rdrr.io/r/base/library.html">library</a></span>(<span class="no">SummarizedExperiment</span>)</pre></div>
+<p>Preparing data for the analysis</p>
+<div class="sourceCode" id="cb15"><pre class="r"><span class="fu"><a href="https://rdrr.io/r/base/load.html">load</a></span>(<span class="st">"masstagSCE.rda"</span>)
+
+<span class="no">dat</span> <span class="kw">&lt;-</span> <span class="no">livecells.sce</span>
+<span class="no">meta</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html">as.data.frame</a></span>(<span class="fu">colData</span>(<span class="no">dat</span>), <span class="kw">stringsAsFactors</span> <span class="kw">=</span> <span class="fl">FALSE</span>)
+<span class="co"># select the TN tumors</span>
+<span class="no">i</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/which.html">which</a></span>(<span class="no">meta</span>$<span class="no">Clinical.Subtype</span> <span class="kw">==</span> <span class="st">"TN"</span>)
+<span class="no">features</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html">as.data.frame</a></span>(<span class="fu">rowData</span>(<span class="no">dat</span>))
+<span class="no">expr</span> <span class="kw">&lt;-</span> <span class="fu">assay</span>(<span class="no">dat</span>)
+<span class="fu"><a href="https://rdrr.io/r/base/colnames.html">rownames</a></span>(<span class="no">expr</span>) <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/make.names.html">make.names</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/colnames.html">rownames</a></span>(<span class="no">expr</span>))
+<span class="co"># rescale the data</span>
+<span class="no">pt</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html">as.character</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/unique.html">unique</a></span>(<span class="no">meta</span>$<span class="no">patient_id.x</span>[<span class="no">i</span>]))
+<span class="no">exprlist</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">pt</span>, <span class="kw">function</span>(<span class="no">v</span>) {
+  <span class="fu"><a href="https://rdrr.io/r/base/scale.html">scale</a></span>(<span class="fu"><a href="https://rdrr.io/r/base/t.html">t</a></span>(<span class="no">expr</span>[, <span class="no">meta</span>$<span class="no">patient_id.x</span> <span class="kw">==</span> <span class="no">v</span>]), <span class="kw">center</span> <span class="kw">=</span> <span class="fl">TRUE</span>, <span class="kw">scale</span> <span class="kw">=</span> <span class="fl">TRUE</span>)
+})
+<span class="fu"><a href="https://rdrr.io/r/base/names.html">names</a></span>(<span class="no">exprlist</span>) <span class="kw">&lt;-</span> <span class="no">pt</span>
+<span class="fu"><a href="https://rdrr.io/r/base/lapply.html">sapply</a></span>(<span class="no">exprlist</span>, <span class="no">nrow</span>)</pre></div>
+<p>Predicting the missing proteins using MBPCA</p>
+<div class="sourceCode" id="cb16"><pre class="r"><span class="co">######</span>
+<span class="no">s.train</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html">sample</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/nrow.html">ncol</a></span>(<span class="no">exprlist</span><span class="kw">[[</span><span class="fl">1</span>]]), <span class="kw">size</span> <span class="kw">=</span> <span class="fl">25</span>)
+<span class="no">s.test</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sets.html">setdiff</a></span>(<span class="fl">1</span>:<span class="fu"><a href="https://rdrr.io/r/base/nrow.html">ncol</a></span>(<span class="no">exprlist</span><span class="kw">[[</span><span class="fl">1</span>]]), <span class="no">s.train</span>)
+<span class="no">v</span> <span class="kw">&lt;-</span> <span class="fu">pred_mbpca</span>(
+  <span class="kw">x</span> <span class="kw">=</span> <span class="no">exprlist</span>, <span class="kw">train.var</span> <span class="kw">=</span> <span class="no">s.train</span>, <span class="kw">test.var</span> <span class="kw">=</span> <span class="no">s.test</span>, <span class="kw">ncomp</span> <span class="kw">=</span> <span class="fl">7</span>,
+  <span class="kw">method</span> <span class="kw">=</span> <span class="st">"blockLoading"</span>, <span class="kw">center</span> <span class="kw">=</span> <span class="fl">FALSE</span>, <span class="kw">validation</span> <span class="kw">=</span> <span class="st">"column"</span>
+)</pre></div>
+<pre><code>## calculating component 1 ...
+## calculating component 2 ...
+## calculating component 3 ...
+## calculating component 4 ...
+## calculating component 5 ...
+## calculating component 6 ...
+## calculating component 7 ...</code></pre>
+<div class="sourceCode" id="cb18"><pre class="r"><span class="no">meanz</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">v</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>$<span class="no">cor.test</span>[, <span class="st">"meanZ"</span>])
+<span class="fu"><a href="https://rdrr.io/r/graphics/boxplot.html">boxplot</a></span>(<span class="no">meanz</span>)</pre></div>
+<p><img src="vignette_files/figure-html/feature_mbpca-1.png"><!-- --></p>
+<p>Predicting the missing proteins using simple linear regression</p>
+<div class="sourceCode" id="cb19"><pre class="r"><span class="no">v2</span> <span class="kw">&lt;-</span> <span class="fu">pred_lm</span>( <span class="kw">x</span> <span class="kw">=</span> <span class="no">exprlist</span>, <span class="kw">train.var</span> <span class="kw">=</span> <span class="no">s.train</span>, <span class="kw">test.var</span> <span class="kw">=</span> <span class="no">s.test</span>, <span class="kw">validation</span> <span class="kw">=</span> <span class="st">"column"</span> )
+<span class="no">meanz2</span> <span class="kw">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html">lapply</a></span>(<span class="no">v2</span>, <span class="kw">function</span>(<span class="no">x</span>) <span class="no">x</span>$<span class="no">cor.test</span>[, <span class="st">"meanZ"</span>])
+<span class="fu"><a href="https://rdrr.io/r/graphics/boxplot.html">boxplot</a></span>(<span class="no">meanz2</span>)</pre></div>
+<p><img src="vignette_files/figure-html/feature_lm-1.png"><!-- --></p>
+<p>In this case, the MBPCA has a similar performance compared to simple linear regression.</p>
+</div>
+<div id="disussion" class="section level2">
+<h2 class="hasAnchor">
+<a href="#disussion" class="anchor"></a>Disussion</h2>
+<p>In this exercise, we have applied MPBCA and simple linear regression to partially overlapping features or sample questions. In fact, the only difference between the two questions depends on how the matrices are transposed. We may expect MBPCA outperforms simple linear regression because the former finds the correlated pattern across multiple datasets, preventing the potential problem of overfitting to one dataset. But this is only the case for the question of partially overlapping samples. This may because the MBPCA was originally developed as a method to integrate multiple omics datasets where different variables (features) measured on the same set of samples (similar to “partial overlapping samples question”). In practice, these data are often normalized in a way that the variable distributions are comparable between samples (column). As a result, in MBPCA, we can directly center/scale each variable so that the divergence among samples is highlighted. However, scenario 2 treats proteins as samples and individual cells as variables. However, the overall abundances of different proteins are different in orders of magnitude, leading to highly correlated variables after scaling/centering. The accuracy of prediction is negatively influenced by the collinearity of scale variables.</p>
+<p>Other remarks</p>
 <ul>
-<li>A working docker image that contains the installed package and dependencies.</li>
-<li>An up-to-date <code>pkgdown</code> website at <a href="https://YOURUSERNAME.github.io/YOURREPOSITORYNAME/" class="uri">https://YOURUSERNAME.github.io/YOURREPOSITORYNAME/</a>
-</li>
-<li>Docker image will be tagged with <code>latest</code>, <code>sha-XXXXXX</code> where <code>XXXXXX</code> is the hash of the current <code>master</code> commit, and <code>master</code>.</li>
+<li>two other categories of methods, multiple-factorial analysis and partial least square, could also be applied to solve the question, but I haven’t got the time to include all of them in the evaluation, and they share the same problems as MBPCA which I will discuss in the next point.</li>
+<li>MBPCA is also 10-100 times faster than linear regression methods.</li>
 </ul>
+<p>Potential improvement We have tried to scale the protein expression and it improves the prediction accuracy. I believe there are more spaces to improve by applying different preprocessing or different metrics to transform the data. A starting point of the next step would try to transform the values to marginal probabilities as in correspondence analysis.</p>
 </div>
-<div id="to-use-the-resulting-image" class="section level2">
+<div id="references" class="section level2">
 <h2 class="hasAnchor">
-<a href="#to-use-the-resulting-image" class="anchor"></a>To use the resulting image:</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1"></a><span class="ex">docker</span> run -e PASSWORD=<span class="op">&lt;</span>choose_a_password_for_rstudio<span class="op">&gt;</span> -p 8787:8787 YOURDOCKERIMAGENAME</span></code></pre></div>
-<p>Once running, navigate to <a href="https://localhost:8787/" class="uri">https://localhost:8787/</a> and then login with <code>rstudio</code>:<code>yourchosenpassword</code>.</p>
-<p>To try with <strong>this</strong> repository docker image:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1"></a><span class="ex">docker</span> run -e PASSWORD=abc -p 8787:8787 seandavi/buildabiocworkshop2020</span></code></pre></div>
-<p><em>NOTE</em>: Running docker that uses the password in plain text like above exposes the password to others in a multi-user system (like a shared workstation or compute node). In practice, consider using an environment variable instead of plain text to pass along passwords and other secrets in docker command lines.</p>
+<a href="#references" class="anchor"></a>References</h2>
+<p>[1] Abdi, Herve, and Lynne J. Williams. n.d. “Principal Component Analysis.” <a href="https://doi.org/10.1002/wics.101" class="uri">https://doi.org/10.1002/wics.101</a>.</p>
+<p>[2] Meng, Chen, Dominic Helm, Martin Frejno, and Bernhard Kuster. 2016. “moCluster: Identifying Joint Patterns Across Multiple Omics Data Sets.” Journal of Proteome Research 15 (3): 755-65.</p>
 </div>
-<div id="whatcha-get" class="section level2">
+<div id="session-information" class="section level2">
 <h2 class="hasAnchor">
-<a href="#whatcha-get" class="anchor"></a>Whatcha get</h2>
-<p><a href="https://seandavi.github.io/BuildABiocWorkshop2020" class="uri">https://seandavi.github.io/BuildABiocWorkshop2020</a></p>
-<p><img src="https://github.com/seandavi/BuildABiocWorkshop2020/raw/master/inst/images/dockerhub_result.png" alt="dockerhub"></p>
+<a href="#session-information" class="anchor"></a>session information</h2>
+<div class="sourceCode" id="cb20"><pre class="r"><span class="fu"><a href="https://rdrr.io/r/utils/sessionInfo.html">sessionInfo</a></span>()</pre></div>
+<pre><code>## R version 4.0.0 (2020-04-24)
+## Platform: x86_64-w64-mingw32/x64 (64-bit)
+## Running under: Windows 10 x64 (build 18362)
+## 
+## Matrix products: default
+## 
+## locale:
+## [1] LC_COLLATE=English_United States.1252 
+## [2] LC_CTYPE=English_United States.1252   
+## [3] LC_MONETARY=English_United States.1252
+## [4] LC_NUMERIC=C                          
+## [5] LC_TIME=English_United States.1252    
+## 
+## attached base packages:
+## [1] parallel  stats4    stats     graphics  grDevices utils     datasets 
+## [8] methods   base     
+## 
+## other attached packages:
+##  [1] SingleCellExperiment_1.10.1 SummarizedExperiment_1.18.2
+##  [3] DelayedArray_0.14.1         matrixStats_0.56.0         
+##  [5] Biobase_2.48.0              GenomicRanges_1.40.0       
+##  [7] GenomeInfoDb_1.24.2         IRanges_2.22.2             
+##  [9] S4Vectors_0.26.1            BiocGenerics_0.34.0        
+## [11] stringr_1.4.0               omicade4_1.28.2            
+## [13] ade4_1.7-15                 mogsa_1.21.0               
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_1.0.4.6           lattice_0.20-41        corpcor_1.6.9         
+##  [4] gtools_3.8.2           digest_0.6.25          R6_2.4.1              
+##  [7] backports_1.1.7        RSQLite_2.2.0          evaluate_0.14         
+## [10] httr_1.4.1             gplots_3.0.3           zlibbioc_1.34.0       
+## [13] rlang_0.4.6            svd_0.5                made4_1.61.0          
+## [16] annotate_1.66.0        gdata_2.18.0           blob_1.2.1            
+## [19] Matrix_1.2-18          checkmate_2.0.0        rmarkdown_2.3         
+## [22] splines_4.0.0          RCurl_1.98-1.2         bit_1.1-15.2          
+## [25] compiler_4.0.0         xfun_0.16              htmltools_0.5.0       
+## [28] GenomeInfoDbData_1.2.3 XML_3.99-0.3           MASS_7.3-51.6         
+## [31] bitops_1.0-6           rappdirs_0.3.1         grid_4.0.0            
+## [34] xtable_1.8-4           GSEABase_1.50.1        DBI_1.1.0             
+## [37] magrittr_1.5           graph_1.66.0           KernSmooth_2.23-17    
+## [40] stringi_1.4.6          XVector_0.28.0         genefilter_1.70.0     
+## [43] graphite_1.34.0        vctrs_0.3.0            tools_4.0.0           
+## [46] bit64_0.9-7            survival_3.1-12        yaml_2.2.1            
+## [49] AnnotationDbi_1.50.0   cluster_2.1.0          caTools_1.18.0        
+## [52] memoise_1.1.0          knitr_1.29</code></pre>
 </div>
 </div>
+
   </div>
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
