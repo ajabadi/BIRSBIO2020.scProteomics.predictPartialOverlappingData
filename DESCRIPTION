@@ -22,4 +22,4 @@ Suggests:
 URL: https://mengchen18.github.io/BIRSBIO2020.scProteomics.predictPartialOverlappingData/
 BugReports: https://github.com/mengchen18/BIRSBIO2020.scProteomics.predictPartialOverlappingData/issues/new
 VignetteBuilder: knitr
-DockerImage: mengchen18/predict_partial_overlapping_data:latest
+DockerImage: aljabadi/predict_partial_overlapping_data:latest
